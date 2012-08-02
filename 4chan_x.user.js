@@ -13,9 +13,9 @@
 // @include        http://sys.4chan.org/*
 // @include        https://sys.4chan.org/*
 // @run-at         document-start
-// @updateURL      https://github.com/that4chanwolf/4chan-x/raw/stable/4chan_x.user.js
-// @downloadURL    https://github.com/that4chanwolf/4chan-x/raw/stable/4chan_x.user.js
-// @icon           http://mayhemydg.github.com/4chan-x/favicon.gif
+// @updateURL      https://github.com/ihavenoface/4chan-x/raw/stable/4chan_x.user.js
+// @downloadURL    https://github.com/ihavenoface/4chan-x/raw/stable/4chan_x.user.js
+// @icon           https://raw.github.com/ihavenoface/4chan-x/gh-pages/favicon.gif
 // ==/UserScript==
 
 /* LICENSE
@@ -2763,9 +2763,9 @@
         className: 'reply dialog',
         innerHTML: '<div id=optionsbar>\
   <div id=credits>\
-    <a target=_blank href=http://that4chanwolf.github.com/4chan-x/>4chan X</a>\
-    | <a target=_blank href=https://raw.github.com/that4chanwolf/4chan-x/master/changelog>' + Main.version + '</a>\
-    | <a target=_blank href=http://that4chanwolf.github.com/4chan-x/#bug-report>Issues</a>\
+    <a target=_blank href=http://ihavenoface.github.com/4chan-x/>4chan X</a>\
+    | <a target=_blank href=https://raw.github.com/ihavenoface/4chan-x/master/changelog>' + Main.version + '</a>\
+    | <a target=_blank href=http://ihavenoface.github.com/4chan-x/#bug-report>Issues</a>\
   </div>\
   <div>\
     <label for=main_tab>Main</label>\
@@ -5464,13 +5464,6 @@
         return $.on(d, 'DOMNodeInserted', Main.addStyle);
       }
     },
-    message: function(e) {
-      var version;
-      version = e.data.version;
-      if (version && version !== Main.version && confirm('An updated version of 4chan X is available, would you like to install it now?')) {
-        return window.location = "https://raw.github.com/aeosynth/4chan-x/" + version + "/4chan_x.user.js";
-      }
-    },
     preParse: function(node) {
       var el, img, parentClass, post;
       parentClass = node.parentNode.className;
@@ -5509,7 +5502,7 @@
           }
         } catch (err) {
           if (notify) {
-            alert("4chan X has experienced an error. You can help by sending this snippet to:\nhttps://github.com/aeosynth/4chan-x/issues\n\n" + Main.version + "\n" + window.location + "\n" + navigator.userAgent + "\n\n" + err.stack);
+            alert("4chan X has experienced an error. You can help by sending this snippet to:\nhttps://github.com/ihavenoface/4chan-x/issues\n\n" + Main.version + "\n" + window.location + "\n" + navigator.userAgent + "\n\n" + err.stack);
           }
         }
       }
