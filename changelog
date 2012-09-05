@@ -1,14 +1,41 @@
 master
 
+2.34.9
+- noface
+  Re-adjust to new recaptcha - now only the control word is needed.
+
+2.34.8
+- small fixes
+
+2.34.7
+- noface
+  Adjust to new recaptcha (now a space must be provided).
+
+- Mayhem
+  Fix support of change in 4chan's HTML about hidden filename in case of spoiler.
+
+2.34.6
+- Mayhem
+  Fix cooldown on /q/.
+  Fix thread creation with no file on /q/.
+  Fix 'Administrator/Moderator/Developer Replies' creating extra backlinks on /q/.
+  Add /mlp/ archive redirection.
+
+2.34.5
+- Mayhem
+  Add /q/ archive redirection.
+
 2.34.4
+- Mayhem
+  Various fixes.
+- ahodesuka
+  Add png thumbnail replacement option.
 - aeosynth
-  Markdown (doesn't work on /g/, for some completely and totally unknown reason)
+  Add Markdown.
 
 2.34.3
 - Mayhem
   Update /k/ archive redirection.
-- seaweedchan
-  Fix updater hanging
 - noface
   Remove redundant entries from the updater
 

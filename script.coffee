@@ -19,6 +19,7 @@ Config =
       'Show Stubs':                   [true,  'Of hidden threads / replies']
     Imaging:
       'Image Auto-Gif':               [false, 'Animate gif thumbnails']
+      'Png Thumbnail Fix':            [false, 'Fixes transparent png thumbnails']
       'Image Expansion':              [true,  'Expand images']
       'Image Hover':                  [false, 'Show full image on mouseover']
       'Sauce':                        [true,  'Add sauce to images']
@@ -42,6 +43,7 @@ Config =
       'Auto Watch Reply':             [false, 'Automatically watch threads that you reply to']
     Posting:
       'Quick Reply':                  [true,  'Reply without leaving the page.']
+      'Focus on Alert':               [true,  'Switch to tab if an error occurs']
       'Cooldown':                     [true,  'Prevent "flood detected" errors.']
       'Persistent QR':                [false, 'The Quick reply won\'t disappear after posting.']
       'Auto Hide QR':                 [true,  'Automatically hide the quick reply when posting.']
@@ -173,8 +175,6 @@ Conf = {}
 d = document
 g = {}
 
-# XXX GreaseMonkey can't into console.log.bind
-log = console.log.bind? console
 
 UI =
   dialog: (id, position, html) ->
@@ -376,6 +376,15 @@ $.extend $,
     script = $.el 'script', textContent: "(#{code})()"
     $.add d.head, script
     $.rm script
+  shortenFilename: (filename, isOP) ->
+    # FILENAME SHORTENING SCIENCE:
+    # OPs have a +10 characters threshold.
+    # The file extension is not taken into account.
+    threshold = 30 + 10 * isOP
+    if filename.replace(/\.\w+$/, '').length > threshold
+      "#{filename[...threshold - 5]}(...)#{filename.match(/\.\w+$/)}"
+    else
+      filename
   bytesToString: (size) ->
     unit = 0 # Bytes
     while size >= 1024
@@ -492,7 +501,10 @@ Markdown =
       ds: /(\|\||__)(?=\S)([^\r\n]*?\S)\1/g
 
     for tag, pattern of tag_patterns
-      text = text.replace pattern, Markdown.unicode_convert
+      if text == null
+        text = '\u180e'
+      else
+        text = text.replace pattern, Markdown.unicode_convert
     text
 
   unicode_convert: (str, tag, inner) ->
@@ -591,17 +603,17 @@ Filter =
         if boards isnt 'global' and boards.split(',').indexOf(g.BOARD) is -1
           continue
 
-        try
-          if key is 'md5'
-            # MD5 filter will use strings instead of regular expressions.
-            regexp = regexp[1]
-          else
+        if key is 'md5'
+          # MD5 filter will use strings instead of regular expressions.
+          regexp = regexp[1]
+        else
+          try
             # Please, don't write silly regular expressions.
             regexp = RegExp regexp[1], regexp[2]
-        catch e
-          # I warned you, bro.
-          alert e.message
-          continue
+          catch err
+            # I warned you, bro.
+            alert err.message
+            continue
 
         # Filter OPs along with their threads, replies only, or both.
         # Defaults to replies only.
@@ -918,7 +930,7 @@ ExpandThread =
         a.textContent = a.textContent.replace '-', '+'
         #goddamit moot
         num = switch g.BOARD
-          when 'b', 'vg' then 3
+          when 'b', 'vg', 'q' then 3
           when 't' then 1
           else 5
         replies = $$ '.replyContainer', thread
@@ -1537,7 +1549,8 @@ QR =
     if /captcha|verification/i.test el.textContent
       # Focus the captcha input on captcha error.
       $('[autocomplete]', QR.el).focus()
-    alert el.textContent if d.hidden or d.oHidden or d.mozHidden or d.webkitHidden
+    if Conf['Focus on Alert'] 
+      if d.hidden or d.oHidden or d.mozHidden or d.webkitHidden then alert el.textContent
   cleanError: ->
     $('.warning', QR.el).textContent = null
 
@@ -1616,9 +1629,9 @@ QR =
 
   drag: (e) ->
     # Let it drag anything from the page.
-    i = if e.type is 'dragstart' then 'off' else 'on'
-    $[i] d, 'dragover', QR.dragOver
-    $[i] d, 'drop',     QR.dropFile
+    toggle = if e.type is 'dragstart' then $.off else $.on
+    toggle d, 'dragover', QR.dragOver
+    toggle d, 'drop',     QR.dropFile
   dragOver: (e) ->
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy' # cursor feedback
@@ -1753,7 +1766,8 @@ QR =
         for i in  [0...l]
           ui8a[i] = data.charCodeAt i
 
-        @url = url.createObjectURL new Blob [ui8a.buffer], type: 'image/png'
+
+        @url = url.createObjectURL new Blob [ui8a], type: 'image/png'
         @el.style.backgroundImage = "url(#{@url})"
         url.revokeObjectURL? fileUrl
 
@@ -1985,14 +1999,21 @@ QR =
       QR.status()
       return
     QR.abort()
-    reply = QR.replies[0]
 
+    reply = QR.replies[0]
     threadID = g.THREAD_ID or $('select', QR.el).value
 
     # prevent errors
-    unless threadID is 'new' and reply.file or threadID isnt 'new' and (reply.com or reply.file)
-      err = 'No file selected.'
-    else if QR.captchaIsEnabled
+    if threadID is 'new'
+      if g.BOARD in ['vg', 'q'] and !reply.sub
+        err = 'New threads require a subject.'
+      else unless reply.file or textOnly = !!$ 'input[name=textonly]', $.id 'postForm'
+          err = 'No file selected.'
+    else
+      unless reply.com or reply.file
+        err = 'No file selected.'
+
+    if QR.captchaIsEnabled and !err
       # get oldest valid captcha
       captchas = $.get 'captchas', []
       # remove old captchas
@@ -2028,19 +2049,27 @@ QR =
     # Starting to upload might take some time.
     # Provide some feedback that we're starting to submit.
     QR.status progress: '...'
-
+    rpc  =      response.replace(/^\s+/, '').replace(/\s+$/, '')
     post =
-      resto:   threadID
-      name:    reply.name
-      email:   reply.email
-      sub:     reply.sub
-      com:     if Conf['Markdown'] then Markdown.format reply.com else reply.com
-      upfile:  reply.file
-      spoiler: reply.spoiler
-      mode:    'regist'
-      pwd: if m = d.cookie.match(/4chan_pass=([^;]+)/) then decodeURIComponent m[1] else $('input[name=pwd]').value
+      resto:    threadID
+      name:     reply.name
+      email:    reply.email
+      sub:      reply.sub
+      com:      if Conf['Markdown'] then Markdown.format reply.com else reply.com
+      upfile:   reply.file
+      spoiler:  reply.spoiler
+      textonly: textOnly
+      mode:     'regist'
+      pwd:      if m = d.cookie.match(/4chan_pass=([^;]+)/) then decodeURIComponent m[1] else $('input[name=pwd]').value
       recaptcha_challenge_field: challenge
-      recaptcha_response_field:  response + ' '
+      recaptcha_response_field:  rpc + ' ' + rpc
+
+    try
+      console.log.bind? console
+    catch err
+      unless $.get 'scriptish'
+        $.set 'scriptish', true
+        alert "From here it appears that you're currently using Scriptish on Nightly.\n\nDue to a recent changeset in the Nightly channel Scriptish isn\'t able to log anything to the console right now.\n\nPlease consider using either Greasemonkey or the stable/beta/aurora channel of Firefox until this problem is fixed."
 
     callbacks =
       onload: ->
@@ -2121,7 +2150,7 @@ QR =
     else
       # Enable auto-posting if we have stuff to post, disable it otherwise.
       QR.cooldown.auto = QR.replies.length > 1
-      QR.cooldown.set if /sage/i.test reply.email then 60 else 30
+      QR.cooldown.set if g.BOARD is 'q' or /sage/i.test reply.email then 60 else 30
       if Conf['Open Reply in New Tab'] && !g.REPLY && !QR.cooldown.auto
         $.open "//boards.4chan.org/#{g.BOARD}/res/#{threadID}#p#{postID}"
 
@@ -2813,17 +2842,17 @@ FileInfo =
     return if post.isInlined and not post.isCrosspost or not post.fileInfo
     node = post.fileInfo.firstElementChild
     alt  = post.img.alt
-    span = $ 'span', node
+    filename = $('span', node)?.title or node.title
     FileInfo.data =
       link:       post.img.parentNode.href
       spoiler:    /^Spoiler/.test alt
       size:       alt.match(/\d+\.?\d*/)[0]
       unit:       alt.match(/\w+$/)[0]
-      resolution: span.previousSibling.textContent.match(/\d+x\d+|PDF/)[0]
-      fullname:   span.title
-      shortname:  span.textContent
+      resolution: node.textContent.match(/\d+x\d+|PDF/)[0]
+      fullname:   filename
+      shortname:  $.shortenFilename filename, post.ID is post.threadID
     # XXX GM/Scriptish
-    node.setAttribute 'data-filename', span.title
+    node.setAttribute 'data-filename', filename
     node.innerHTML = FileInfo.funk FileInfo
   setFormats: ->
     code = Conf['fileInfo'].replace /%([BKlLMnNprs])/g, (s, c) ->
@@ -2924,6 +2953,7 @@ Get =
     isOP = postID is threadID
     {name, trip, timestamp} = data
     subject = data.title
+    userID  = data.poster_hash
 
     # post info (mobile)
     piM = $.el 'div',
@@ -2960,7 +2990,7 @@ Get =
     pi = $.el 'div',
       id: "pi#{postID}"
       className: 'postInfo desktop'
-      innerHTML: "<input type=checkbox name=#{postID} value=delete> <span class=subject></span> <span class=nameBlock></span> <span class=dateTime data-utc=#{timestamp}>data.fourchan_date</span> <span class='postNum desktop'><a href='/#{board}/res/#{threadID}#p#{postID}' title='Highlight this post'>No.</a><a href='/#{board}/res/#{threadID}#q#{postID}' title='Quote this post'>#{postID}</a>#{if isOP then ' &nbsp; ' else ''}</span> "
+      innerHTML: "<input type=checkbox name=#{postID} value=delete> <span class=subject></span> <span class=nameBlock></span> <span class=dateTime data-utc=#{timestamp}>data.fourchan_date</span> <span class='postNum desktop'><a href='/#{board}/res/#{threadID}#p#{postID}' title='Highlight this post'>No.</a><a href='/#{board}/res/#{threadID}#q#{postID}' title='Quote this post'>#{postID}</a></span>"
     # subject
     $('.subject', pi).textContent = subject
     nameBlock = $ '.nameBlock', pi
@@ -2973,27 +3003,63 @@ Get =
     $.add nameBlock, $.el 'span',
       className: 'name'
       textContent: data.name
+    if userID
+      $.add nameBlock, [$.tn(' '), $.el('span',
+        className: "posteruid id_#{userID}"
+        innerHTML: "(ID: <span class=hand title='Highlight posts by this ID'>#{userID}</span>)"
+      )]
     if trip
       $.add nameBlock, [$.tn(' '), $.el('span', className: 'postertrip', textContent: trip)]
-    if capcode isnt 'N' # 'A'dmin or 'M'od
-      $.add nameBlock, [
-        $.tn(' '),
-        $.el('strong',
-          className:   if capcode is 'A' then 'capcode capcodeAdmin' else 'capcode',
-          textContent: if capcode is 'A' then '## Admin' else '## Mod'
-        )
-      ]
-      nameBlock = $ '.nameBlock', pi
-      $.addClass nameBlock, if capcode is 'A' then 'capcodeAdmin' else 'capcodeMod'
-      $.add nameBlock, [
-        $.tn(' '),
-        $.el('img',
-          src:   if capcode is 'A' then '//static.4chan.org/image/adminicon.gif' else  '//static.4chan.org/image/modicon.gif',
-          alt:   if capcode is 'A' then 'This user is the 4chan Administrator.' else 'This user is a 4chan Moderator.',
-          title: if capcode is 'A' then 'This user is the 4chan Administrator.' else 'This user is a 4chan Moderator.',
-          className: 'identityIcon'
-        )
-      ]
+    nameBlock = $ '.nameBlock', pi
+    switch capcode # 'A'dmin or 'M'od or 'D'eveloper
+      when 'A'
+        $.addClass nameBlock, 'capcodeAdmin'
+        $.add nameBlock, [
+          $.tn(' '),
+          $.el('strong',
+            className:   'capcode'
+            textContent: '## Admin'
+          ),
+          $.tn(' '),
+          $.el('img',
+            src:   '//static.4chan.org/image/adminicon.gif'
+            alt:   'This user is the 4chan Administrator.'
+            title: 'This user is the 4chan Administrator.'
+            className: 'identityIcon'
+          )
+        ]
+      when 'M'
+        $.addClass nameBlock, 'capcodeMod'
+        $.add nameBlock, [
+          $.tn(' '),
+          $.el('strong',
+            className:   'capcode'
+            textContent: '## Mod'
+          ),
+          $.tn(' '),
+          $.el('img',
+            src:   '//static.4chan.org/image/modicon.gif'
+            alt:   'This user is a 4chan Moderator.'
+            title: 'This user is a 4chan Moderator.'
+            className: 'identityIcon'
+          )
+        ]
+      when 'D'
+        $.addClass nameBlock, 'capcodeDeveloper'
+        $.add nameBlock, [
+          $.tn(' '),
+          $.el('strong',
+            className:   'capcode'
+            textContent: '## Developer'
+          ),
+          $.tn(' '),
+          $.el('img',
+            src:   '//static.4chan.org/image/developericon.gif'
+            alt:   'This user is a 4chan Developer.'
+            title: 'title="This user is a 4chan Developer.'
+            className: 'identityIcon'
+          )
+        ]
 
     # comment
     bq = $.el 'blockquote',
@@ -3055,15 +3121,7 @@ Get =
         innerHTML: "<span id=fT#{postID} class=fileText>File: <a href='#{data.media_link or data.remote_media_link}' target=_blank>#{data.media_orig}</a>-(#{if spoiler then 'Spoiler Image, ' else ''}#{filesize}, #{data.media_w}x#{data.media_h}, <span title></span>)</span>"
       span = $ 'span[title]', file
       span.title = filename
-      threshold = if isOP then 40 else 30
-      span.textContent =
-        # FILENAME SHORTENING SCIENCE:
-        # OPs have a +10 characters threshold.
-        # The file extension is not taken into account.
-        if filename.replace(/\.\w+$/, '').length > threshold
-          "#{filename[...threshold - 5]}(...)#{filename.match(/\.\w+$/)}"
-        else
-          filename
+      span.textContent = $.shortenFilename filename, isOP
       thumb_src = if data.media_status is 'available' then "src=#{data.thumb_link}" else ''
       $.add file, $.el 'a',
         className: if spoiler then 'fileThumb imgspoiler' else 'fileThumb'
@@ -3122,6 +3180,8 @@ QuoteBacklink =
     return if post.isInlined
     quotes = {}
     for quote in post.quotes
+      # Stop at 'Admin/Mod/Dev Replies:' on /q/
+      break if quote.parentNode.getAttribute('style') is 'font-size: smaller;'
       # Don't process >>>/b/.
       if qid = quote.hash[2..]
         # Duplicate quotes get overwritten.
@@ -3641,7 +3701,7 @@ ThreadStats =
         when 'a', 'b', 'v', 'co', 'mlp'
           251
         when 'vg'
-          501
+          376
         else
           151
     Main.callbacks.push @node
@@ -3775,7 +3835,7 @@ Redirect =
   image: (board, filename) ->
     # Do not use g.BOARD, the image url can originate from a cross-quote.
     switch board
-      when 'a', 'm', 'sp', 'tg', 'vg', 'wsg'
+      when 'a', 'm', 'q', 'sp', 'tg', 'vg', 'wsg'
         "//archive.foolz.us/#{board}/full_image/#{filename}"
       when 'u'
         "//nsfw.foolz.us/#{board}/full_image/#{filename}"
@@ -3785,10 +3845,10 @@ Redirect =
       # when 'an', 'k', 'toy', 'x'
       #   "http://archive.heinessen.com/#{board}/full_image/#{filename}"
       # when 'e'
-      #   "https://md401.homelinux.net/4chan/cgi-board.pl/#{board}/full_image/#{filename}"
+      #   "https://www.cliché.net/4chan/cgi-board.pl/#{board}/full_image/#{filename}"
   post: (board, postID) ->
     switch board
-      when 'a', 'co', 'jp', 'm', 'sp', 'tg', 'tv', 'v', 'vg', 'wsg', 'dev', 'foolz'
+      when 'a', 'co', 'jp', 'm', 'q', 'sp', 'tg', 'tv', 'v', 'vg', 'wsg', 'dev', 'foolz'
         "//archive.foolz.us/api/chan/post/board/#{board}/num/#{postID}/format/json"
       when 'u', 'kuku'
         "//nsfw.foolz.us/api/chan/post/board/#{board}/num/#{postID}/format/json"
@@ -3801,7 +3861,7 @@ Redirect =
       else
         "#{board}/post/#{postID}"
     switch board
-      when 'a', 'co', 'm', 'sp', 'tg', 'tv', 'v', 'vg', 'wsg', 'dev', 'foolz'
+      when 'a', 'co', 'm', 'q', 'sp', 'tg', 'tv', 'v', 'vg', 'wsg', 'dev', 'foolz'
         url = "//archive.foolz.us/#{path}/"
         if threadID and postID
           url += "##{postID}"
@@ -3821,12 +3881,12 @@ Redirect =
         url = "//archive.rebeccablacktech.com/#{path}"
         if threadID and postID
           url += "#p#{postID}"
-      when 'an', 'fit', 'k', 'r9k', 'toy', 'x'
+      when 'an', 'fit', 'k', 'mlp', 'r9k', 'toy', 'x'
         url = "http://archive.heinessen.com/#{path}"
         if threadID and postID
           url += "#p#{postID}"
       when 'e'
-        url = "https://md401.homelinux.net/4chan/cgi-board.pl/#{path}"
+        url = "https://www.cliché.net/4chan/cgi-board.pl/#{path}"
         if threadID and postID
           url += "#p#{postID}"
       else
@@ -3927,6 +3987,19 @@ Prefetch =
     return unless img
     $.el 'img',
       src: img.parentNode.href
+
+PngFix =
+  init: ->
+    Main.callbacks.push @node
+  node: (post) ->
+    {img} = post
+    return if post.el.hidden or not img
+    src = img.parentNode.href
+    if /png$/.test(src) and !/spoiler/.test img.src
+      png = $.el 'img'
+      $.on png, 'load', ->
+        img.src = src
+      png.src = src
 
 ImageExpand =
   init: ->
@@ -4113,6 +4186,9 @@ Main =
 
     if Conf['Image Auto-Gif']
       AutoGif.init()
+
+    if Conf['Png Thumbnail Fix']
+      PngFix.init()
 
     if Conf['Image Hover']
       ImageHover.init()
@@ -4350,7 +4426,7 @@ Main =
     $.globalEval "#{code}".replace '_id_', bq.id
 
   namespace: '4chan_x.'
-  version: '2.34.4'
+  version: '2.34.9'
   callbacks: []
   css: '
 /* dialog styling */
@@ -4465,7 +4541,9 @@ h1 {
   background: -o-linear-gradient(#EEE, #CCC);
   background: linear-gradient(#EEE, #CCC);
   width: 10%;
-  padding: -moz-calc(1px) 0 2px;
+}
+.gecko #dump {
+  padding: 1px 0 2px;
 }
 #dump:hover, #dump:focus {
   background: -webkit-linear-gradient(#FFF, #DDD);
@@ -4643,8 +4721,10 @@ h1 {
 #qr [type=submit] {
   margin: 1px 0;
   padding: 1px; /* not Gecko */
-  padding: 0 -moz-calc(1px); /* Gecko does not respect box-sizing: border-box */
   width: 30%;
+}
+.gecko #qr [type=submit] {
+  padding: 0 1px; /* Gecko does not respect box-sizing: border-box */
 }
 
 .fileText:hover .fntrunc,
@@ -4802,8 +4882,10 @@ div.opContainer {
 .filter_highlight > .reply {
   box-shadow: -5px 0 rgba(255,0,0,0.5);
 }
-.filtered {
-  text-decoration: underline line-through;
+.filtered,
+.quotelink.filtered {
+  text-decoration: underline;
+  text-decoration: line-through !important;
 }
 .quotelink.forwardlink,
 .backlink.forwardlink {

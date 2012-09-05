@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           4chan x
-// @version        2.34.4
+// @version        2.34.9
 // @namespace      aeosynth
 // @description    Adds various features.
 // @copyright      2009-2011 James Campos <james.r.campos@gmail.com>
@@ -23,7 +23,7 @@
  * Copyright (c) 2009-2011 James Campos <james.r.campos@gmail.com>
  * Copyright (c) 2012 Nicolas Stepien <stepien.nicolas@gmail.com>
  * http://mayhemydg.github.com/4chan-x/
- * 4chan X 2.34.4
+ * 4chan X 2.34.9
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -77,7 +77,7 @@
  */
 
 (function() {
-  var $, $$, Anonymize, ArchiveLink, AutoGif, Conf, Config, DeleteLink, DownloadLink, ExpandComment, ExpandThread, Favicon, FileInfo, Filter, Get, ImageExpand, ImageHover, Keybinds, Main, Markdown, Menu, Nav, Options, Prefetch, QR, QuoteBacklink, QuoteCT, QuoteInline, QuoteOP, QuotePreview, QuoteThreading, Quotify, Redirect, ReplyHiding, ReportLink, RevealSpoilers, Sauce, StrikethroughQuotes, ThreadHiding, ThreadStats, Time, TitlePost, UI, Unread, Updater, Watcher, d, g, log, _base;
+  var $, $$, Anonymize, ArchiveLink, AutoGif, Conf, Config, DeleteLink, DownloadLink, ExpandComment, ExpandThread, Favicon, FileInfo, Filter, Get, ImageExpand, ImageHover, Keybinds, Main, Markdown, Menu, Nav, Options, PngFix, Prefetch, QR, QuoteBacklink, QuoteCT, QuoteInline, QuoteOP, QuotePreview, QuoteThreading, Quotify, Redirect, ReplyHiding, ReportLink, RevealSpoilers, Sauce, StrikethroughQuotes, ThreadHiding, ThreadStats, Time, TitlePost, UI, Unread, Updater, Watcher, d, g;
 
   Config = {
     main: {
@@ -102,6 +102,7 @@
       },
       Imaging: {
         'Image Auto-Gif': [false, 'Animate gif thumbnails'],
+        'Png Thumbnail Fix': [false, 'Fixes transparent png thumbnails'],
         'Image Expansion': [true, 'Expand images'],
         'Image Hover': [false, 'Show full image on mouseover'],
         'Sauce': [true, 'Add sauce to images'],
@@ -128,6 +129,7 @@
       },
       Posting: {
         'Quick Reply': [true, 'Reply without leaving the page.'],
+        'Focus on Alert': [true, 'Switch to tab if an error occurs'],
         'Cooldown': [true, 'Prevent "flood detected" errors.'],
         'Persistent QR': [false, 'The Quick reply won\'t disappear after posting.'],
         'Auto Hide QR': [true, 'Automatically hide the quick reply when posting.'],
@@ -214,8 +216,6 @@
   d = document;
 
   g = {};
-
-  log = typeof (_base = console.log).bind === "function" ? _base.bind(console) : void 0;
 
   UI = {
     dialog: function(id, position, html) {
@@ -501,6 +501,15 @@
       $.add(d.head, script);
       return $.rm(script);
     },
+    shortenFilename: function(filename, isOP) {
+      var threshold;
+      threshold = 30 + 10 * isOP;
+      if (filename.replace(/\.\w+$/, '').length > threshold) {
+        return "" + filename.slice(0, threshold - 5) + "(...)" + (filename.match(/\.\w+$/));
+      } else {
+        return filename;
+      }
+    },
     bytesToString: function(size) {
       var unit;
       unit = 0;
@@ -648,7 +657,11 @@
       };
       for (tag in tag_patterns) {
         pattern = tag_patterns[tag];
-        text = text.replace(pattern, Markdown.unicode_convert);
+        if (text === null) {
+          text = '\u180e';
+        } else {
+          text = text.replace(pattern, Markdown.unicode_convert);
+        }
       }
       return text;
     },
@@ -768,15 +781,15 @@
           if (boards !== 'global' && boards.split(',').indexOf(g.BOARD) === -1) {
             continue;
           }
-          try {
-            if (key === 'md5') {
-              regexp = regexp[1];
-            } else {
+          if (key === 'md5') {
+            regexp = regexp[1];
+          } else {
+            try {
               regexp = RegExp(regexp[1], regexp[2]);
+            } catch (err) {
+              alert(err.message);
+              continue;
             }
-          } catch (e) {
-            alert(e.message);
-            continue;
           }
           op = ((_ref2 = filter.match(/[^t]op:(yes|no|only)/)) != null ? _ref2[1] : void 0) || 'no';
           stub = (function() {
@@ -1144,6 +1157,7 @@
             switch (g.BOARD) {
               case 'b':
               case 'vg':
+              case 'q':
                 return 3;
               case 't':
                 return 1;
@@ -1994,8 +2008,10 @@
       if (/captcha|verification/i.test(el.textContent)) {
         $('[autocomplete]', QR.el).focus();
       }
-      if (d.hidden || d.oHidden || d.mozHidden || d.webkitHidden) {
-        return alert(el.textContent);
+      if (Conf['Focus on Alert']) {
+        if (d.hidden || d.oHidden || d.mozHidden || d.webkitHidden) {
+          return alert(el.textContent);
+        }
       }
     },
     cleanError: function() {
@@ -2093,10 +2109,10 @@
       return (count > 1500 ? $.addClass : $.rmClass)(counter, 'warning');
     },
     drag: function(e) {
-      var i;
-      i = e.type === 'dragstart' ? 'off' : 'on';
-      $[i](d, 'dragover', QR.dragOver);
-      return $[i](d, 'drop', QR.dropFile);
+      var toggle;
+      toggle = e.type === 'dragstart' ? $.off : $.on;
+      toggle(d, 'dragover', QR.dragOver);
+      return toggle(d, 'drop', QR.dropFile);
     },
     dragOver: function(e) {
       e.preventDefault();
@@ -2258,7 +2274,7 @@
           for (i = _i = 0; 0 <= l ? _i < l : _i > l; i = 0 <= l ? ++_i : --_i) {
             ui8a[i] = data.charCodeAt(i);
           }
-          _this.url = url.createObjectURL(new Blob([ui8a.buffer], {
+          _this.url = url.createObjectURL(new Blob([ui8a], {
             type: 'image/png'
           }));
           _this.el.style.backgroundImage = "url(" + _this.url + ")";
@@ -2268,7 +2284,7 @@
       };
 
       _Class.prototype.rmFile = function() {
-        var _base1;
+        var _base;
         QR.resetFileInput();
         delete this.file;
         this.el.title = null;
@@ -2276,7 +2292,7 @@
         if (QR.spoiler) {
           $('label', this.el).hidden = true;
         }
-        return typeof (_base1 = window.URL || window.webkitURL).revokeObjectURL === "function" ? _base1.revokeObjectURL(this.url) : void 0;
+        return typeof (_base = window.URL || window.webkitURL).revokeObjectURL === "function" ? _base.revokeObjectURL(this.url) : void 0;
       };
 
       _Class.prototype.select = function() {
@@ -2341,7 +2357,7 @@
       };
 
       _Class.prototype.rm = function() {
-        var index, _base1;
+        var index, _base;
         QR.resetFileInput();
         $.rm(this.el);
         index = QR.replies.indexOf(this);
@@ -2351,8 +2367,8 @@
           (QR.replies[index - 1] || QR.replies[index + 1]).select();
         }
         QR.replies.splice(index, 1);
-        if (typeof (_base1 = window.URL || window.webkitURL).revokeObjectURL === "function") {
-          _base1.revokeObjectURL(this.url);
+        if (typeof (_base = window.URL || window.webkitURL).revokeObjectURL === "function") {
+          _base.revokeObjectURL(this.url);
         }
         return delete this;
       };
@@ -2569,7 +2585,7 @@
       }));
     },
     submit: function(e) {
-      var callbacks, captcha, captchas, challenge, err, m, opts, post, reply, response, threadID;
+      var callbacks, captcha, captchas, challenge, err, m, opts, post, reply, response, rpc, textOnly, threadID, _base, _ref;
       if (e != null) {
         e.preventDefault();
       }
@@ -2581,9 +2597,18 @@
       QR.abort();
       reply = QR.replies[0];
       threadID = g.THREAD_ID || $('select', QR.el).value;
-      if (!(threadID === 'new' && reply.file || threadID !== 'new' && (reply.com || reply.file))) {
-        err = 'No file selected.';
-      } else if (QR.captchaIsEnabled) {
+      if (threadID === 'new') {
+        if (((_ref = g.BOARD) === 'vg' || _ref === 'q') && !reply.sub) {
+          err = 'New threads require a subject.';
+        } else if (!(reply.file || (textOnly = !!$('input[name=textonly]', $.id('postForm'))))) {
+          err = 'No file selected.';
+        }
+      } else {
+        if (!(reply.com || reply.file)) {
+          err = 'No file selected.';
+        }
+      }
+      if (QR.captchaIsEnabled && !err) {
         captchas = $.get('captchas', []);
         while ((captcha = captchas[0]) && captcha.time < Date.now()) {
           captchas.shift();
@@ -2620,6 +2645,7 @@
       QR.status({
         progress: '...'
       });
+      rpc = response.replace(/^\s+/, '').replace(/\s+$/, '');
       post = {
         resto: threadID,
         name: reply.name,
@@ -2628,11 +2654,22 @@
         com: Conf['Markdown'] ? Markdown.format(reply.com) : reply.com,
         upfile: reply.file,
         spoiler: reply.spoiler,
+        textonly: textOnly,
         mode: 'regist',
         pwd: (m = d.cookie.match(/4chan_pass=([^;]+)/)) ? decodeURIComponent(m[1]) : $('input[name=pwd]').value,
         recaptcha_challenge_field: challenge,
-        recaptcha_response_field: response + ' '
+        recaptcha_response_field: rpc + ' ' + rpc
       };
+      try {
+        if (typeof (_base = console.log).bind === "function") {
+          _base.bind(console);
+        }
+      } catch (err) {
+        if (!$.get('scriptish')) {
+          $.set('scriptish', true);
+          alert("From here it appears that you're currently using Scriptish on Nightly.\n\nDue to a recent changeset in the Nightly channel Scriptish isn\'t able to log anything to the console right now.\n\nPlease consider using either Greasemonkey or the stable/beta/aurora channel of Firefox until this problem is fixed.");
+        }
+      }
       callbacks = {
         onload: function() {
           return QR.response(this.response);
@@ -2712,7 +2749,7 @@
         location.pathname = "/" + g.BOARD + "/res/" + postID;
       } else {
         QR.cooldown.auto = QR.replies.length > 1;
-        QR.cooldown.set(/sage/i.test(reply.email) ? 60 : 30);
+        QR.cooldown.set(g.BOARD === 'q' || /sage/i.test(reply.email) ? 60 : 30);
         if (Conf['Open Reply in New Tab'] && !g.REPLY && !QR.cooldown.auto) {
           $.open("//boards.4chan.org/" + g.BOARD + "/res/" + threadID + "#p" + postID);
         }
@@ -3565,23 +3602,23 @@
       return Main.callbacks.push(this.node);
     },
     node: function(post) {
-      var alt, node, span;
+      var alt, filename, node, _ref;
       if (post.isInlined && !post.isCrosspost || !post.fileInfo) {
         return;
       }
       node = post.fileInfo.firstElementChild;
       alt = post.img.alt;
-      span = $('span', node);
+      filename = ((_ref = $('span', node)) != null ? _ref.title : void 0) || node.title;
       FileInfo.data = {
         link: post.img.parentNode.href,
         spoiler: /^Spoiler/.test(alt),
         size: alt.match(/\d+\.?\d*/)[0],
         unit: alt.match(/\w+$/)[0],
-        resolution: span.previousSibling.textContent.match(/\d+x\d+|PDF/)[0],
-        fullname: span.title,
-        shortname: span.textContent
+        resolution: node.textContent.match(/\d+x\d+|PDF/)[0],
+        fullname: filename,
+        shortname: $.shortenFilename(filename, post.ID === post.threadID)
       };
-      node.setAttribute('data-filename', span.title);
+      node.setAttribute('data-filename', filename);
       return node.innerHTML = FileInfo.funk(FileInfo);
     },
     setFormats: function() {
@@ -3724,7 +3761,7 @@
       }
     },
     parseArchivedPost: function(req, board, postID, root, cb) {
-      var bq, br, capcode, data, email, file, filename, filesize, isOP, name, nameBlock, pc, pi, piM, span, spoiler, subject, threadID, threshold, thumb_src, timestamp, trip;
+      var bq, br, capcode, data, email, file, filename, filesize, isOP, name, nameBlock, pc, pi, piM, span, spoiler, subject, threadID, thumb_src, timestamp, trip, userID;
       data = JSON.parse(req.response);
       $.addClass(root, 'archivedPost');
       if (data.error) {
@@ -3735,6 +3772,7 @@
       isOP = postID === threadID;
       name = data.name, trip = data.trip, timestamp = data.timestamp;
       subject = data.title;
+      userID = data.poster_hash;
       piM = $.el('div', {
         id: "pim" + postID,
         className: 'postInfoM mobile',
@@ -3769,7 +3807,7 @@
       pi = $.el('div', {
         id: "pi" + postID,
         className: 'postInfo desktop',
-        innerHTML: "<input type=checkbox name=" + postID + " value=delete> <span class=subject></span> <span class=nameBlock></span> <span class=dateTime data-utc=" + timestamp + ">data.fourchan_date</span> <span class='postNum desktop'><a href='/" + board + "/res/" + threadID + "#p" + postID + "' title='Highlight this post'>No.</a><a href='/" + board + "/res/" + threadID + "#q" + postID + "' title='Quote this post'>" + postID + "</a>" + (isOP ? ' &nbsp; ' : '') + "</span> "
+        innerHTML: "<input type=checkbox name=" + postID + " value=delete> <span class=subject></span> <span class=nameBlock></span> <span class=dateTime data-utc=" + timestamp + ">data.fourchan_date</span> <span class='postNum desktop'><a href='/" + board + "/res/" + threadID + "#p" + postID + "' title='Highlight this post'>No.</a><a href='/" + board + "/res/" + threadID + "#q" + postID + "' title='Quote this post'>" + postID + "</a></span>"
       });
       $('.subject', pi).textContent = subject;
       nameBlock = $('.nameBlock', pi);
@@ -3785,6 +3823,14 @@
         className: 'name',
         textContent: data.name
       }));
+      if (userID) {
+        $.add(nameBlock, [
+          $.tn(' '), $.el('span', {
+            className: "posteruid id_" + userID,
+            innerHTML: "(ID: <span class=hand title='Highlight posts by this ID'>" + userID + "</span>)"
+          })
+        ]);
+      }
       if (trip) {
         $.add(nameBlock, [
           $.tn(' '), $.el('span', {
@@ -3793,23 +3839,49 @@
           })
         ]);
       }
-      if (capcode !== 'N') {
-        $.add(nameBlock, [
-          $.tn(' '), $.el('strong', {
-            className: capcode === 'A' ? 'capcode capcodeAdmin' : 'capcode',
-            textContent: capcode === 'A' ? '## Admin' : '## Mod'
-          })
-        ]);
-        nameBlock = $('.nameBlock', pi);
-        $.addClass(nameBlock, capcode === 'A' ? 'capcodeAdmin' : 'capcodeMod');
-        $.add(nameBlock, [
-          $.tn(' '), $.el('img', {
-            src: capcode === 'A' ? '//static.4chan.org/image/adminicon.gif' : '//static.4chan.org/image/modicon.gif',
-            alt: capcode === 'A' ? 'This user is the 4chan Administrator.' : 'This user is a 4chan Moderator.',
-            title: capcode === 'A' ? 'This user is the 4chan Administrator.' : 'This user is a 4chan Moderator.',
-            className: 'identityIcon'
-          })
-        ]);
+      nameBlock = $('.nameBlock', pi);
+      switch (capcode) {
+        case 'A':
+          $.addClass(nameBlock, 'capcodeAdmin');
+          $.add(nameBlock, [
+            $.tn(' '), $.el('strong', {
+              className: 'capcode',
+              textContent: '## Admin'
+            }), $.tn(' '), $.el('img', {
+              src: '//static.4chan.org/image/adminicon.gif',
+              alt: 'This user is the 4chan Administrator.',
+              title: 'This user is the 4chan Administrator.',
+              className: 'identityIcon'
+            })
+          ]);
+          break;
+        case 'M':
+          $.addClass(nameBlock, 'capcodeMod');
+          $.add(nameBlock, [
+            $.tn(' '), $.el('strong', {
+              className: 'capcode',
+              textContent: '## Mod'
+            }), $.tn(' '), $.el('img', {
+              src: '//static.4chan.org/image/modicon.gif',
+              alt: 'This user is a 4chan Moderator.',
+              title: 'This user is a 4chan Moderator.',
+              className: 'identityIcon'
+            })
+          ]);
+          break;
+        case 'D':
+          $.addClass(nameBlock, 'capcodeDeveloper');
+          $.add(nameBlock, [
+            $.tn(' '), $.el('strong', {
+              className: 'capcode',
+              textContent: '## Developer'
+            }), $.tn(' '), $.el('img', {
+              src: '//static.4chan.org/image/developericon.gif',
+              alt: 'This user is a 4chan Developer.',
+              title: 'title="This user is a 4chan Developer.',
+              className: 'identityIcon'
+            })
+          ]);
       }
       bq = $.el('blockquote', {
         id: "m" + postID,
@@ -3862,8 +3934,7 @@
         }));
         span = $('span[title]', file);
         span.title = filename;
-        threshold = isOP ? 40 : 30;
-        span.textContent = filename.replace(/\.\w+$/, '').length > threshold ? "" + filename.slice(0, threshold - 5) + "(...)" + (filename.match(/\.\w+$/)) : filename;
+        span.textContent = $.shortenFilename(filename, isOP);
         thumb_src = data.media_status === 'available' ? "src=" + data.thumb_link : '';
         $.add(file, $.el('a', {
           className: spoiler ? 'fileThumb imgspoiler' : 'fileThumb',
@@ -3951,6 +4022,9 @@
       _ref = post.quotes;
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         quote = _ref[_i];
+        if (quote.parentNode.getAttribute('style') === 'font-size: smaller;') {
+          break;
+        }
         if (qid = quote.hash.slice(2)) {
           quotes[qid] = true;
         }
@@ -4618,7 +4692,7 @@
           case 'mlp':
             return 251;
           case 'vg':
-            return 501;
+            return 376;
           default:
             return 151;
         }
@@ -4767,6 +4841,7 @@
       switch (board) {
         case 'a':
         case 'm':
+        case 'q':
         case 'sp':
         case 'tg':
         case 'vg':
@@ -4782,6 +4857,7 @@
         case 'co':
         case 'jp':
         case 'm':
+        case 'q':
         case 'sp':
         case 'tg':
         case 'tv':
@@ -4806,6 +4882,7 @@
         case 'a':
         case 'co':
         case 'm':
+        case 'q':
         case 'sp':
         case 'tg':
         case 'tv':
@@ -4854,6 +4931,7 @@
         case 'an':
         case 'fit':
         case 'k':
+        case 'mlp':
         case 'r9k':
         case 'toy':
         case 'x':
@@ -4863,7 +4941,7 @@
           }
           break;
         case 'e':
-          url = "https://md401.homelinux.net/4chan/cgi-board.pl/" + path;
+          url = "https://www.cliché.net/4chan/cgi-board.pl/" + path;
           if (threadID && postID) {
             url += "#p" + postID;
           }
@@ -5020,6 +5098,27 @@
       return $.el('img', {
         src: img.parentNode.href
       });
+    }
+  };
+
+  PngFix = {
+    init: function() {
+      return Main.callbacks.push(this.node);
+    },
+    node: function(post) {
+      var img, png, src;
+      img = post.img;
+      if (post.el.hidden || !img) {
+        return;
+      }
+      src = img.parentNode.href;
+      if (/png$/.test(src) && !/spoiler/.test(img.src)) {
+        png = $.el('img');
+        $.on(png, 'load', function() {
+          return img.src = src;
+        });
+        return png.src = src;
+      }
     }
   };
 
@@ -5272,6 +5371,9 @@
       }
       if (Conf['Image Auto-Gif']) {
         AutoGif.init();
+      }
+      if (Conf['Png Thumbnail Fix']) {
+        PngFix.init();
       }
       if (Conf['Image Hover']) {
         ImageHover.init();
@@ -5556,7 +5658,7 @@
       return $.globalEval(("" + code).replace('_id_', bq.id));
     },
     namespace: '4chan_x.',
-    version: '2.34.4',
+    version: '2.34.9',
     callbacks: [],
     css: '\
 /* dialog styling */\
@@ -5671,7 +5773,9 @@ h1 {\
   background: -o-linear-gradient(#EEE, #CCC);\
   background: linear-gradient(#EEE, #CCC);\
   width: 10%;\
-  padding: -moz-calc(1px) 0 2px;\
+}\
+.gecko #dump {\
+  padding: 1px 0 2px;\
 }\
 #dump:hover, #dump:focus {\
   background: -webkit-linear-gradient(#FFF, #DDD);\
@@ -5849,8 +5953,10 @@ h1 {\
 #qr [type=submit] {\
   margin: 1px 0;\
   padding: 1px; /* not Gecko */\
-  padding: 0 -moz-calc(1px); /* Gecko does not respect box-sizing: border-box */\
   width: 30%;\
+}\
+.gecko #qr [type=submit] {\
+  padding: 0 1px; /* Gecko does not respect box-sizing: border-box */\
 }\
 \
 .fileText:hover .fntrunc,\
@@ -6008,8 +6114,10 @@ div.opContainer {\
 .filter_highlight > .reply {\
   box-shadow: -5px 0 rgba(255,0,0,0.5);\
 }\
-.filtered {\
-  text-decoration: underline line-through;\
+.filtered,\
+.quotelink.filtered {\
+  text-decoration: underline;\
+  text-decoration: line-through !important;\
 }\
 .quotelink.forwardlink,\
 .backlink.forwardlink {\
