@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           4chan x
-// @version        2.34.9
+// @version        2.34.10
 // @namespace      aeosynth
 // @description    Adds various features.
 // @copyright      2009-2011 James Campos <james.r.campos@gmail.com>
@@ -23,7 +23,7 @@
  * Copyright (c) 2009-2011 James Campos <james.r.campos@gmail.com>
  * Copyright (c) 2012 Nicolas Stepien <stepien.nicolas@gmail.com>
  * http://mayhemydg.github.com/4chan-x/
- * 4chan X 2.34.9
+ * 4chan X 2.34.10
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -2774,8 +2774,9 @@
 
   Options = {
     init: function() {
-      var a, el, settings, _i, _len, _ref;
+      var a, settings, _i, _len, _ref, _results;
       _ref = ['navtopright', 'navbotright'];
+      _results = [];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         settings = _ref[_i];
         a = $.el('a', {
@@ -2784,13 +2785,15 @@
           textContent: '4chan X Settings'
         });
         $.on(a, 'click', Options.dialog);
-        el = $.id(settings).firstElementChild;
-        $.before(el, [a, $.tn('] ')]);
+        $.prepend($.id(settings), [$.tn('['), a, $.tn('] ')]);
+        if (!$.get('firstrun')) {
+          $.set('firstrun', true);
+          _results.push(Options.dialog());
+        } else {
+          _results.push(void 0);
+        }
       }
-      if (!$.get('firstrun')) {
-        $.set('firstrun', true);
-        return Options.dialog();
-      }
+      return _results;
     },
     dialog: function() {
       var arr, back, checked, description, dialog, favicon, fileInfo, filter, hiddenNum, hiddenThreads, indicator, indicators, input, key, left, li, obj, overlay, sauce, time, top, tr, ul, _i, _len, _ref, _ref1, _ref2;
@@ -5657,7 +5660,7 @@
       return $.globalEval(("" + code).replace('_id_', bq.id));
     },
     namespace: '4chan_x.',
-    version: '2.34.9',
+    version: '2.34.10',
     callbacks: [],
     css: '\
 /* dialog styling */\

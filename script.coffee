@@ -2175,11 +2175,10 @@ Options =
         className: 'settingsWindowLink'
         textContent: '4chan X Settings'
       $.on a, 'click', Options.dialog
-      el = $.id(settings).firstElementChild
-      $.before el, [a, $.tn('] ')]
-    unless $.get 'firstrun'
-      $.set 'firstrun', true
-      Options.dialog()
+      $.prepend $.id(settings), [$.tn('['), a, $.tn('] ')]
+      unless $.get 'firstrun'
+        $.set 'firstrun', true
+        Options.dialog()
 
   dialog: ->
     dialog = $.el 'div'
@@ -4425,7 +4424,7 @@ Main =
     $.globalEval "#{code}".replace '_id_', bq.id
 
   namespace: '4chan_x.'
-  version: '2.34.9'
+  version: '2.34.10'
   callbacks: []
   css: '
 /* dialog styling */
