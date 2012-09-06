@@ -1766,7 +1766,6 @@ QR =
         for i in  [0...l]
           ui8a[i] = data.charCodeAt i
 
-
         @url = url.createObjectURL new Blob [ui8a], type: 'image/png'
         @el.style.backgroundImage = "url(#{@url})"
         url.revokeObjectURL? fileUrl
@@ -4006,10 +4005,9 @@ ImageExpand =
 
   node: (post) ->
     return unless post.img
-    sp = FileInfo.data.spoiler
     a = post.img.parentNode
     $.on a, 'click', ImageExpand.cb.toggle
-    if ImageExpand.on and !post.el.hidden and sp isnt true
+    if ImageExpand.on and !post.el.hidden
       ImageExpand.expand post.img
   cb:
     toggle: (e) ->
